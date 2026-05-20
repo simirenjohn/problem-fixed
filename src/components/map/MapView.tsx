@@ -35,6 +35,7 @@ type Props = {
   onMeasurePoint: (pt: [number, number]) => void;
   onMeasureFinish: () => void;
   gpsPosition: { lat: number; lng: number; accuracy: number } | null;
+  pinnedPoint: { lat: number; lng: number; label?: string } | null;
 };
 
 const SIANA_CENTER: [number, number] = [-1.552, 35.305];
@@ -87,6 +88,7 @@ export default function MapView({
   onMeasurePoint,
   onMeasureFinish,
   gpsPosition,
+  pinnedPoint,
 }: Props) {
   const geoRef = useRef<L.GeoJSON | null>(null);
 
@@ -261,6 +263,24 @@ export default function MapView({
             <Tooltip>Your location (±{gpsPosition.accuracy.toFixed(0)} m)</Tooltip>
           </CircleMarker>
         </>
+      )}
+
+      {pinnedPoint && (
+        <CircleMarker
+          center={[pinnedPoint.lat, pinnedPoint.lng]}
+          radius={8}
+          pathOptions={{
+            color: "#a3e635",
+            weight: 2,
+            fillColor: "#a3e635",
+            fillOpacity: 0.9,
+          }}
+        >
+          <Tooltip permanent direction="top" offset={[0, -8]}>
+            {pinnedPoint.label ??
+              `${pinnedPoint.lat.toFixed(6)}, ${pinnedPoint.lng.toFixed(6)}`}
+          </Tooltip>
+        </CircleMarker>
       )}
 
       <FlyHandler target={flyTo} />
