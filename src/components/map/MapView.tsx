@@ -112,6 +112,7 @@ export default function MapView({
     <MapContainer
       center={SIANA_CENTER}
       zoom={15}
+      maxZoom={22}
       doubleClickZoom={measureMode === "none"}
       className="h-full w-full"
       style={{ background: "#0a0a0a" }}
@@ -121,19 +122,24 @@ export default function MapView({
           <TileLayer
             attribution='Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics'
             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            maxZoom={19}
+            maxZoom={22}
+            maxNativeZoom={18}
           />
         </LayersControl.BaseLayer>
         <LayersControl.BaseLayer name="OpenStreetMap">
           <TileLayer
             attribution='&copy; OpenStreetMap contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxZoom={22}
+            maxNativeZoom={19}
           />
         </LayersControl.BaseLayer>
         <LayersControl.Overlay checked name="Reference labels">
           <TileLayer
             attribution="Esri Reference"
             url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+            maxZoom={22}
+            maxNativeZoom={16}
           />
         </LayersControl.Overlay>
       </LayersControl>
