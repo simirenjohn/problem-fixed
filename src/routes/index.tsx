@@ -12,6 +12,7 @@ import {
   MapPin,
   Menu,
   Info,
+  Navigation,
 } from "lucide-react";
 import parcelsData from "@/data/parcels.geojson?raw";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import {
   parcelToGeoJSON,
   parcelToKML,
 } from "@/lib/parcel-export";
+import { parseDecimal, utmToLatLng } from "@/lib/coords";
 
 const MapView = lazy(() => import("@/components/map/MapView"));
 
@@ -77,6 +79,53 @@ function Index() {
     accuracy: number;
   } | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
+
+  const [coordMode, setCoordMode] = useState<"latlng" | "utm">("latlng");
+  const [latInput, setLatInput] = useState("");
+  const [lngInput, setLngInput] = useState("");
+  const [eastingInput, setEastingInput] = useState("");
+  const [northingInput, setNorthingInput] = useState("");
+  const [utmZone, setUtmZone] = useState("36");
+  const [utmHem, setUtmHem] = useState<"N" | "S">("S");
+  const [pinnedPoint, setPinnedPoint] = useState<{
+    lat: number;
+    lng: number;
+    label?: string;
+  } | null>(null);
+  const [coordError, setCoordError] = useState<string | null>(null);
+
+  const goToCoordinates = () => {
+    setCoordError(null);
+    if (coordMode === "latlng") {
+      const lat = parseDecimal(latInput);
+      const lng = parseDecimal(lngInput);
+      if (lat === null || lng === null) {
+        setCoordError("Enter valid decimal latitude and longitude.");
+        return;
+      }
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        setCoordError("Lat must be -90..90, Lng -180..180.");
+        return;
+      }
+      setPinnedPoint({ lat, lng, label: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
+      setFlyTo({ lat, lng, zoom: 18 });
+    } else {
+      const e = parseDecimal(eastingInput);
+      const n = parseDecimal(northingInput);
+      const z = parseInt(utmZone, 10);
+      if (e === null || n === null || !z || z < 1 || z > 60) {
+        setCoordError("Enter valid easting, northing and UTM zone (1-60).");
+        return;
+      }
+      const { lat, lng } = utmToLatLng(e, n, z, utmHem);
+      setPinnedPoint({
+        lat,
+        lng,
+        label: `E ${e.toFixed(1)} N ${n.toFixed(1)} (${z}${utmHem})`,
+      });
+      setFlyTo({ lat, lng, zoom: 18 });
+    }
+  };
 
   const selected: Feature<Polygon> | null = useMemo(() => {
     if (!selectedId) return null;
@@ -174,6 +223,7 @@ function Index() {
               onMeasurePoint={(pt) => setMeasurePoints((p) => [...p, pt])}
               onMeasureFinish={() => setMeasureMode((m) => m)}
               gpsPosition={gpsPosition}
+              pinnedPoint={pinnedPoint}
             />
           </Suspense>
         ) : (
