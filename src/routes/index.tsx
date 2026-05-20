@@ -12,6 +12,7 @@ import {
   MapPin,
   Menu,
   Info,
+  Navigation,
 } from "lucide-react";
 import parcelsData from "@/data/parcels.geojson?raw";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import {
   parcelToGeoJSON,
   parcelToKML,
 } from "@/lib/parcel-export";
+import { parseDecimal, utmToLatLng } from "@/lib/coords";
 
 const MapView = lazy(() => import("@/components/map/MapView"));
 
@@ -77,6 +79,53 @@ function Index() {
     accuracy: number;
   } | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
+
+  const [coordMode, setCoordMode] = useState<"latlng" | "utm">("latlng");
+  const [latInput, setLatInput] = useState("");
+  const [lngInput, setLngInput] = useState("");
+  const [eastingInput, setEastingInput] = useState("");
+  const [northingInput, setNorthingInput] = useState("");
+  const [utmZone, setUtmZone] = useState("36");
+  const [utmHem, setUtmHem] = useState<"N" | "S">("S");
+  const [pinnedPoint, setPinnedPoint] = useState<{
+    lat: number;
+    lng: number;
+    label?: string;
+  } | null>(null);
+  const [coordError, setCoordError] = useState<string | null>(null);
+
+  const goToCoordinates = () => {
+    setCoordError(null);
+    if (coordMode === "latlng") {
+      const lat = parseDecimal(latInput);
+      const lng = parseDecimal(lngInput);
+      if (lat === null || lng === null) {
+        setCoordError("Enter valid decimal latitude and longitude.");
+        return;
+      }
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        setCoordError("Lat must be -90..90, Lng -180..180.");
+        return;
+      }
+      setPinnedPoint({ lat, lng, label: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
+      setFlyTo({ lat, lng, zoom: 18 });
+    } else {
+      const e = parseDecimal(eastingInput);
+      const n = parseDecimal(northingInput);
+      const z = parseInt(utmZone, 10);
+      if (e === null || n === null || !z || z < 1 || z > 60) {
+        setCoordError("Enter valid easting, northing and UTM zone (1-60).");
+        return;
+      }
+      const { lat, lng } = utmToLatLng(e, n, z, utmHem);
+      setPinnedPoint({
+        lat,
+        lng,
+        label: `E ${e.toFixed(1)} N ${n.toFixed(1)} (${z}${utmHem})`,
+      });
+      setFlyTo({ lat, lng, zoom: 18 });
+    }
+  };
 
   const selected: Feature<Polygon> | null = useMemo(() => {
     if (!selectedId) return null;
@@ -174,6 +223,7 @@ function Index() {
               onMeasurePoint={(pt) => setMeasurePoints((p) => [...p, pt])}
               onMeasureFinish={() => setMeasureMode((m) => m)}
               gpsPosition={gpsPosition}
+              pinnedPoint={pinnedPoint}
             />
           </Suspense>
         ) : (
@@ -306,6 +356,155 @@ function Index() {
             )}
             {gpsError && (
               <p className="mt-2 text-xs text-destructive">{gpsError}</p>
+            )}
+          </Panel>
+
+          <Panel title="Go to coordinates" icon={<Navigation className="h-4 w-4" />}>
+            <div className="mb-2 flex gap-1 rounded-md border border-border p-1">
+              <button
+                onClick={() => setCoordMode("latlng")}
+                className={`flex-1 rounded px-2 py-1 text-xs font-medium transition ${
+                  coordMode === "latlng"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                Lat / Lng
+              </button>
+              <button
+                onClick={() => setCoordMode("utm")}
+                className={`flex-1 rounded px-2 py-1 text-xs font-medium transition ${
+                  coordMode === "utm"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                UTM (N / E)
+              </button>
+            </div>
+
+            {coordMode === "latlng" ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Latitude
+                  </label>
+                  <Input
+                    value={latInput}
+                    onChange={(e) => setLatInput(e.target.value)}
+                    placeholder="-1.552000"
+                    className="h-8"
+                    inputMode="decimal"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    Longitude
+                  </label>
+                  <Input
+                    value={lngInput}
+                    onChange={(e) => setLngInput(e.target.value)}
+                    placeholder="35.305000"
+                    className="h-8"
+                    inputMode="decimal"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Easting (m)
+                    </label>
+                    <Input
+                      value={eastingInput}
+                      onChange={(e) => setEastingInput(e.target.value)}
+                      placeholder="700000"
+                      className="h-8"
+                      inputMode="decimal"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Northing (m)
+                    </label>
+                    <Input
+                      value={northingInput}
+                      onChange={(e) => setNorthingInput(e.target.value)}
+                      placeholder="9828000"
+                      className="h-8"
+                      inputMode="decimal"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Zone (1–60)
+                    </label>
+                    <Input
+                      value={utmZone}
+                      onChange={(e) => setUtmZone(e.target.value)}
+                      placeholder="36"
+                      className="h-8"
+                      inputMode="numeric"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Hemisphere
+                    </label>
+                    <div className="flex gap-1 rounded-md border border-border p-1">
+                      <button
+                        onClick={() => setUtmHem("N")}
+                        className={`flex-1 rounded px-2 py-0.5 text-xs ${
+                          utmHem === "N"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        N
+                      </button>
+                      <button
+                        onClick={() => setUtmHem("S")}
+                        className={`flex-1 rounded px-2 py-0.5 text-xs ${
+                          utmHem === "S"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        S
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Button size="sm" onClick={goToCoordinates}>
+                <Navigation className="mr-2 h-4 w-4" /> Go to point
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setPinnedPoint(null);
+                  setCoordError(null);
+                }}
+                disabled={!pinnedPoint}
+              >
+                Clear pin
+              </Button>
+            </div>
+            {coordError && (
+              <p className="mt-2 text-xs text-destructive">{coordError}</p>
+            )}
+            {pinnedPoint && !coordError && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Pinned: {pinnedPoint.lat.toFixed(6)}, {pinnedPoint.lng.toFixed(6)}
+              </p>
             )}
           </Panel>
 
