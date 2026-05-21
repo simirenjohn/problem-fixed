@@ -398,13 +398,13 @@ export default function MapView({
       ))}
       {coordShape === "line" && coordPoints.length >= 2 && (
         <Polyline
-          positions={coordPoints.map((p) => [p.lat, p.lng])}
+          positions={coordPoints.map((p) => [p.lat, p.lng] as [number, number])}
           pathOptions={{ color: "#0ea5e9", weight: 3 }}
         />
       )}
       {coordShape === "polygon" && coordPoints.length >= 3 && (
         <LPolygon
-          positions={coordPoints.map((p) => [p.lat, p.lng])}
+          positions={coordPoints.map((p) => [p.lat, p.lng] as [number, number])}
           pathOptions={{
             color: "#0ea5e9",
             weight: 2,
