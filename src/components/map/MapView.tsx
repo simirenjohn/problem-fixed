@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -121,9 +121,7 @@ export default function MapView({
   fitBounds = null,
 }: Props) {
   const geoRef = useRef<L.GeoJSON | null>(null);
-  const [hoverPoint, setHoverPoint] = (require("react") as typeof import("react")).useState<
-    [number, number] | null
-  >(null);
+  const [hoverPoint, setHoverPoint] = useState<[number, number] | null>(null);
 
   // Re-render parcels layer when selection or visibility changes by re-keying
   const geoKey = useMemo(
@@ -417,17 +415,18 @@ export default function MapView({
       )}
 
       {/* Saved measurements from project */}
-      {savedMeasurements.map((m) =>
-        m.type === "distance" ? (
+      {savedMeasurements.map((m) => {
+        const pts = m.points as L.LatLngExpression[];
+        return m.type === "distance" ? (
           <Polyline
             key={m.id}
-            positions={m.points}
+            positions={pts}
             pathOptions={{ color: "#f59e0b", weight: 2, dashArray: "2 4" }}
           />
         ) : (
           <LPolygon
             key={m.id}
-            positions={m.points}
+            positions={pts}
             pathOptions={{
               color: "#f59e0b",
               weight: 2,
@@ -436,8 +435,8 @@ export default function MapView({
               dashArray: "2 4",
             }}
           />
-        ),
-      )}
+        );
+      })}
 
       <FlyHandler target={flyTo} />
       <FitHandler bounds={fitBounds} />
