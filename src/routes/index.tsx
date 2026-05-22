@@ -1156,6 +1156,7 @@ function Index() {
                 { id: "search" as const, icon: Search },
                 { id: "layers" as const, icon: Layers },
                 { id: "coords" as const, icon: Navigation },
+                { id: "import" as const, icon: FileUp },
                 { id: "measure" as const, icon: Ruler },
                 { id: "info" as const, icon: Info },
               ]
