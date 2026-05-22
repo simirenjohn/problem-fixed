@@ -729,12 +729,32 @@ function Index() {
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <LabeledInput
-                      label="Zone 1–60"
-                      value={utmZone}
-                      onChange={setUtmZone}
-                      placeholder="36"
-                    />
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Zone (Narok: 36)
+                      </label>
+                      <div className="flex gap-1">
+                        <Input
+                          value={utmZone}
+                          onChange={(e) => setUtmZone(e.target.value)}
+                          className="h-8 w-14"
+                          inputMode="numeric"
+                        />
+                        {(["36", "37"] as const).map((z) => (
+                          <button
+                            key={z}
+                            onClick={() => setUtmZone(z)}
+                            className={`flex-1 rounded border text-xs ${
+                              utmZone === z
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border text-muted-foreground hover:bg-accent"
+                            }`}
+                          >
+                            {z}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div>
                       <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
                         Hemisphere
@@ -758,6 +778,37 @@ function Index() {
                   </div>
                 </div>
               )}
+
+              <div className="mt-2">
+                <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Datum
+                </label>
+                <div className="flex gap-1 rounded-md border border-border p-1">
+                  {(
+                    [
+                      { id: "WGS84" as const, label: "WGS 84" },
+                      { id: "ARC1960" as const, label: "Arc 1960 (KE)" },
+                    ]
+                  ).map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => setDatum(d.id)}
+                      className={`flex-1 rounded px-2 py-1 text-xs ${
+                        datum === d.id
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Use <strong>Arc 1960</strong> for Kenyan cadastral / RIM
+                  coordinates. Points are auto-shifted to WGS 84 for the
+                  satellite basemap (~150 m correction).
+                </p>
+              </div>
 
               <div className="mt-2">
                 <LabeledInput
