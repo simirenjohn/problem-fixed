@@ -924,6 +924,7 @@ function Index() {
               open={openSections.measure}
               onToggle={toggleSection}
             >
+              {/* placeholder marker for patch anchor */}
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant={measureMode === "distance" ? "default" : "secondary"}
