@@ -24,6 +24,9 @@ import {
   Shapes,
   Maximize2,
   Undo2,
+  FileUp,
+  Image as ImageIcon,
+  Loader2,
 } from "lucide-react";
 import parcelsData from "@/data/parcels.geojson?raw";
 import { Button } from "@/components/ui/button";
@@ -42,7 +45,9 @@ import {
   parcelToGeoJSON,
   parcelToKML,
 } from "@/lib/parcel-export";
-import { parseDecimal, utmToLatLng } from "@/lib/coords";
+import { parseDecimal, toWgs84, utmToLatLng, type Datum } from "@/lib/coords";
+import { importGisFile } from "@/lib/import-gis";
+import { extractCoordPointsFromText, runOcr } from "@/lib/ocr";
 import {
   type Project,
   type CoordPoint,
@@ -74,7 +79,14 @@ export const Route = createFileRoute("/")({
 
 type MeasureMode = "none" | "distance" | "area";
 type CoordMode = "latlng" | "utm";
-type SectionId = "projects" | "search" | "layers" | "coords" | "measure" | "info";
+type SectionId =
+  | "projects"
+  | "search"
+  | "layers"
+  | "coords"
+  | "import"
+  | "measure"
+  | "info";
 
 function Index() {
   const [mounted, setMounted] = useState(false);
@@ -89,6 +101,10 @@ function Index() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const gisInputRef = useRef<HTMLInputElement | null>(null);
+  const ocrInputRef = useRef<HTMLInputElement | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
 
   useEffect(() => {
     const { projects: ps, activeId: a } = ensureDefaultProject();
@@ -173,6 +189,7 @@ function Index() {
     search: false,
     layers: false,
     coords: true,
+    import: false,
     measure: false,
     info: true,
   });
@@ -262,6 +279,7 @@ function Index() {
   const [northingInput, setNorthingInput] = useState("");
   const [utmZone, setUtmZone] = useState("36");
   const [utmHem, setUtmHem] = useState<"N" | "S">("S");
+  const [datum, setDatum] = useState<Datum>("WGS84");
   const [labelInput, setLabelInput] = useState("");
   const [coordError, setCoordError] = useState<string | null>(null);
   const [coordShape, setCoordShape] = useState<"none" | "line" | "polygon">("none");
@@ -282,6 +300,11 @@ function Index() {
         setCoordError("Lat must be -90..90, Lng -180..180.");
         return;
       }
+      if (datum !== "WGS84") {
+        const w = toWgs84(lat, lng, datum);
+        lat = w.lat;
+        lng = w.lng;
+      }
       autoLabel = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
     } else {
       const e = parseDecimal(eastingInput);
@@ -291,10 +314,17 @@ function Index() {
         setCoordError("Enter valid easting, northing and UTM zone (1-60).");
         return;
       }
-      const r = utmToLatLng(e, n, z, utmHem);
+      // Sanity check: typical UTM easting is 100,000-900,000.
+      if (e < 100000 || e > 900000) {
+        setCoordError(
+          "Easting looks out of range (expect ~160,000–840,000 m). Check the value.",
+        );
+        return;
+      }
+      const r = utmToLatLng(e, n, z, utmHem, datum);
       lat = r.lat;
       lng = r.lng;
-      autoLabel = `E${e.toFixed(0)} N${n.toFixed(0)} ${z}${utmHem}`;
+      autoLabel = `E${e.toFixed(0)} N${n.toFixed(0)} ${z}${utmHem} (${datum})`;
     }
     const label =
       labelInput.trim() ||
@@ -307,6 +337,70 @@ function Index() {
     setEastingInput("");
     setNorthingInput("");
     setLabelInput("");
+  };
+
+  // --- GIS file import ---
+  const handleGisFile = async (file: File) => {
+    if (!activeProject) return;
+    setImportBusy(true);
+    setImportStatus(`Reading ${file.name}…`);
+    try {
+      const res = await importGisFile(file);
+      updateActive((p) => ({
+        ...p,
+        points: [...p.points, ...res.points],
+        measurements: [...p.measurements, ...res.measurements],
+      }));
+      const all = [
+        ...res.points.map((p) => [p.lat, p.lng] as [number, number]),
+        ...res.measurements.flatMap((m) => m.points),
+      ];
+      if (all.length > 0) {
+        setFitBounds(all);
+        setTimeout(() => setFitBounds(null), 100);
+      }
+      setImportStatus(
+        `Imported ${res.points.length} point(s) and ${res.measurements.length} shape(s).` +
+          (res.warnings.length ? " " + res.warnings.join(" ") : ""),
+      );
+    } catch (e) {
+      setImportStatus("Import failed: " + (e as Error).message);
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  // --- Image OCR import ---
+  const handleOcrFile = async (file: File) => {
+    if (!activeProject) return;
+    setImportBusy(true);
+    setImportStatus(`Running OCR on ${file.name}…`);
+    try {
+      const text = await runOcr(file);
+      const { points: pts, raw } = extractCoordPointsFromText(text, {
+        defaultZone: parseInt(utmZone, 10) || 36,
+        defaultHemisphere: utmHem,
+        datum,
+      });
+      if (pts.length === 0) {
+        setImportStatus(
+          "OCR found no coordinate-like numbers. Try a clearer image, or copy the text and paste manually.",
+        );
+        return;
+      }
+      updateActive((p) => ({ ...p, points: [...p.points, ...pts] }));
+      setFitBounds(pts.map((p) => [p.lat, p.lng] as [number, number]));
+      setTimeout(() => setFitBounds(null), 100);
+      setImportStatus(
+        `OCR detected ${pts.length} coordinate(s): ${raw.slice(0, 3).join(" · ")}${
+          raw.length > 3 ? "…" : ""
+        }`,
+      );
+    } catch (e) {
+      setImportStatus("OCR failed: " + (e as Error).message);
+    } finally {
+      setImportBusy(false);
+    }
   };
 
   const removePoint = (id: string) => {
@@ -635,12 +729,32 @@ function Index() {
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <LabeledInput
-                      label="Zone 1–60"
-                      value={utmZone}
-                      onChange={setUtmZone}
-                      placeholder="36"
-                    />
+                    <div>
+                      <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        Zone (Narok: 36)
+                      </label>
+                      <div className="flex gap-1">
+                        <Input
+                          value={utmZone}
+                          onChange={(e) => setUtmZone(e.target.value)}
+                          className="h-8 w-14"
+                          inputMode="numeric"
+                        />
+                        {(["36", "37"] as const).map((z) => (
+                          <button
+                            key={z}
+                            onClick={() => setUtmZone(z)}
+                            className={`flex-1 rounded border text-xs ${
+                              utmZone === z
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border text-muted-foreground hover:bg-accent"
+                            }`}
+                          >
+                            {z}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div>
                       <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
                         Hemisphere
@@ -664,6 +778,37 @@ function Index() {
                   </div>
                 </div>
               )}
+
+              <div className="mt-2">
+                <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  Datum
+                </label>
+                <div className="flex gap-1 rounded-md border border-border p-1">
+                  {(
+                    [
+                      { id: "WGS84" as const, label: "WGS 84" },
+                      { id: "ARC1960" as const, label: "Arc 1960 (KE)" },
+                    ]
+                  ).map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => setDatum(d.id)}
+                      className={`flex-1 rounded px-2 py-1 text-xs ${
+                        datum === d.id
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Use <strong>Arc 1960</strong> for Kenyan cadastral / RIM
+                  coordinates. Points are auto-shifted to WGS 84 for the
+                  satellite basemap (~150 m correction).
+                </p>
+              </div>
 
               <div className="mt-2">
                 <LabeledInput
@@ -769,6 +914,76 @@ function Index() {
                   )}
                 </>
               )}
+            </Section>
+
+            {/* Import */}
+            <Section
+              id="import"
+              icon={<FileUp className="h-4 w-4" />}
+              title="Import data"
+              open={openSections.import}
+              onToggle={toggleSection}
+            >
+              <div className="space-y-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full justify-start"
+                  onClick={() => gisInputRef.current?.click()}
+                  disabled={importBusy}
+                >
+                  <FileUp className="mr-2 h-4 w-4" />
+                  GIS file (KML, KMZ, GPX, GeoJSON, SHP zip, CSV)
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full justify-start"
+                  onClick={() => ocrInputRef.current?.click()}
+                  disabled={importBusy}
+                >
+                  <ImageIcon className="mr-2 h-4 w-4" />
+                  Image (OCR → coordinates)
+                </Button>
+                <input
+                  ref={gisInputRef}
+                  type="file"
+                  accept=".kml,.kmz,.gpx,.geojson,.json,.csv,.tsv,.txt,.zip,.shp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleGisFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                <input
+                  ref={ocrInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleOcrFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                {importBusy && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Working…
+                  </div>
+                )}
+                {importStatus && (
+                  <p className="text-[11px] text-muted-foreground">{importStatus}</p>
+                )}
+                <p className="text-[10px] text-muted-foreground">
+                  <strong>DWG</strong> files cannot be parsed in the browser
+                  (proprietary AutoCAD format). Export from AutoCAD or QGIS as
+                  <em> DXF, SHP, KML or GeoJSON</em> and import that.
+                  Imported coordinates use the datum currently selected in
+                  Coordinates above.
+                </p>
+              </div>
             </Section>
 
             {/* Measure */}
@@ -941,6 +1156,7 @@ function Index() {
                 { id: "search" as const, icon: Search },
                 { id: "layers" as const, icon: Layers },
                 { id: "coords" as const, icon: Navigation },
+                { id: "import" as const, icon: FileUp },
                 { id: "measure" as const, icon: Ruler },
                 { id: "info" as const, icon: Info },
               ]
