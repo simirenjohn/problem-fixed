@@ -916,6 +916,76 @@ function Index() {
               )}
             </Section>
 
+            {/* Import */}
+            <Section
+              id="import"
+              icon={<FileUp className="h-4 w-4" />}
+              title="Import data"
+              open={openSections.import}
+              onToggle={toggleSection}
+            >
+              <div className="space-y-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full justify-start"
+                  onClick={() => gisInputRef.current?.click()}
+                  disabled={importBusy}
+                >
+                  <FileUp className="mr-2 h-4 w-4" />
+                  GIS file (KML, KMZ, GPX, GeoJSON, SHP zip, CSV)
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full justify-start"
+                  onClick={() => ocrInputRef.current?.click()}
+                  disabled={importBusy}
+                >
+                  <ImageIcon className="mr-2 h-4 w-4" />
+                  Image (OCR → coordinates)
+                </Button>
+                <input
+                  ref={gisInputRef}
+                  type="file"
+                  accept=".kml,.kmz,.gpx,.geojson,.json,.csv,.tsv,.txt,.zip,.shp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleGisFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                <input
+                  ref={ocrInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleOcrFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                {importBusy && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Working…
+                  </div>
+                )}
+                {importStatus && (
+                  <p className="text-[11px] text-muted-foreground">{importStatus}</p>
+                )}
+                <p className="text-[10px] text-muted-foreground">
+                  <strong>DWG</strong> files cannot be parsed in the browser
+                  (proprietary AutoCAD format). Export from AutoCAD or QGIS as
+                  <em> DXF, SHP, KML or GeoJSON</em> and import that.
+                  Imported coordinates use the datum currently selected in
+                  Coordinates above.
+                </p>
+              </div>
+            </Section>
+
             {/* Measure */}
             <Section
               id="measure"
