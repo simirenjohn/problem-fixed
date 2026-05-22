@@ -7,15 +7,67 @@ export function parseDecimal(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export type Datum = "WGS84" | "ARC1960";
+
+// Ellipsoid parameters
+const ELLIPSOIDS = {
+  WGS84: { a: 6378137.0, f: 1 / 298.257223563 },
+  // Clarke 1880 (RGS) — used by Arc 1960 (Kenya/Tanzania/Uganda)
+  ARC1960: { a: 6378249.145, f: 1 / 293.465 },
+};
+
+// 3-parameter geocentric translation from Arc 1960 -> WGS84 (Kenya).
+// Common EPSG transformation values (meters).
+const ARC1960_TO_WGS84 = { dx: -157, dy: -2, dz: -299 };
+
+function geodeticToEcef(lat: number, lng: number, h: number, a: number, f: number) {
+  const e2 = f * (2 - f);
+  const phi = (lat * Math.PI) / 180;
+  const lam = (lng * Math.PI) / 180;
+  const N = a / Math.sqrt(1 - e2 * Math.sin(phi) ** 2);
+  const x = (N + h) * Math.cos(phi) * Math.cos(lam);
+  const y = (N + h) * Math.cos(phi) * Math.sin(lam);
+  const z = (N * (1 - e2) + h) * Math.sin(phi);
+  return { x, y, z };
+}
+
+function ecefToGeodetic(x: number, y: number, z: number, a: number, f: number) {
+  const e2 = f * (2 - f);
+  const b = a * (1 - f);
+  const ep2 = (a * a - b * b) / (b * b);
+  const p = Math.sqrt(x * x + y * y);
+  const th = Math.atan2(z * a, p * b);
+  const lng = Math.atan2(y, x);
+  const lat = Math.atan2(
+    z + ep2 * b * Math.sin(th) ** 3,
+    p - e2 * a * Math.cos(th) ** 3,
+  );
+  return { lat: (lat * 180) / Math.PI, lng: (lng * 180) / Math.PI };
+}
+
+// Convert a lat/lng in the given datum to WGS84 lat/lng.
+export function toWgs84(lat: number, lng: number, datum: Datum): { lat: number; lng: number } {
+  if (datum === "WGS84") return { lat, lng };
+  const src = ELLIPSOIDS.ARC1960;
+  const dst = ELLIPSOIDS.WGS84;
+  const p = geodeticToEcef(lat, lng, 0, src.a, src.f);
+  const tx = p.x + ARC1960_TO_WGS84.dx;
+  const ty = p.y + ARC1960_TO_WGS84.dy;
+  const tz = p.z + ARC1960_TO_WGS84.dz;
+  return ecefToGeodetic(tx, ty, tz, dst.a, dst.f);
+}
+
 // WGS84 UTM -> lat/lng. zone 1-60, hemisphere 'N' or 'S'.
 export function utmToLatLng(
   easting: number,
   northing: number,
   zone: number,
   hemisphere: "N" | "S",
+  datum: Datum = "WGS84",
 ): { lat: number; lng: number } {
-  const a = 6378137.0;
-  const f = 1 / 298.257223563;
+  const ell = ELLIPSOIDS[datum];
+  const a = ell.a;
+  const f = ell.f;
   const k0 = 0.9996;
   const e2 = f * (2 - f);
   const ep2 = e2 / (1 - e2);
@@ -60,7 +112,9 @@ export function utmToLatLng(
   const lngOrigin = ((zone - 1) * 6 - 180 + 3) * (Math.PI / 180);
   const lng = lngOrigin + lngRad;
 
-  return { lat: lat * (180 / Math.PI), lng: lng * (180 / Math.PI) };
+  const result = { lat: lat * (180 / Math.PI), lng: lng * (180 / Math.PI) };
+  // If non-WGS84 input, shift to WGS84 for display on web maps.
+  return datum === "WGS84" ? result : toWgs84(result.lat, result.lng, datum);
 }
 
 export function latLngToUtm(
