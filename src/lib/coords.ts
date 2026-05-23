@@ -7,6 +7,20 @@ export function parseDecimal(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Apply a local metric offset (easting/northing meters) to a WGS84 lat/lng.
+// Useful for site-level RTK calibration of imported or OCR coordinates.
+export function applyMetricOffset(
+  lat: number,
+  lng: number,
+  dE: number,
+  dN: number,
+): { lat: number; lng: number } {
+  if (!dE && !dN) return { lat, lng };
+  const dLat = dN / 110540;
+  const dLng = dE / (111320 * Math.cos((lat * Math.PI) / 180));
+  return { lat: lat + dLat, lng: lng + dLng };
+}
+
 export type Datum = "WGS84" | "ARC1960";
 
 // Ellipsoid parameters
