@@ -22,6 +22,8 @@ export type Project = {
   points: CoordPoint[];
   measurements: Measurement[];
   notes?: string;
+  /** Site-level RTK calibration offset (meters). Applied to imports & OCR coords. */
+  calibration?: { dE: number; dN: number; enabled: boolean };
 };
 
 const STORAGE_KEY = "siana-rim:projects:v1";
