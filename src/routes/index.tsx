@@ -27,7 +27,6 @@ import {
   FileUp,
   Image as ImageIcon,
   Loader2,
-  Target,
 } from "lucide-react";
 import parcelsData from "@/data/parcels.geojson?raw";
 import { Button } from "@/components/ui/button";
@@ -47,10 +46,8 @@ import {
   parcelToKML,
 } from "@/lib/parcel-export";
 import {
-  applyMetricOffset,
   parseDecimal,
   utmToLatLng,
-  type Datum,
 } from "@/lib/coords";
 import { importGisFile } from "@/lib/import-gis";
 import { extractCoordPointsFromText, runOcr } from "@/lib/ocr";
@@ -76,7 +73,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Plot UTM coordinates on satellite imagery with Arc 1960 datum and RTK calibration for Narok land surveys.",
+          "Plot Arc 1960 UTM coordinates on satellite imagery for Narok land surveys.",
       },
     ],
   }),
@@ -89,12 +86,9 @@ type SectionId =
   | "search"
   | "layers"
   | "coords"
-  | "calibration"
   | "import"
   | "measure"
   | "info";
-
-const DEFAULT_CAL = { dE: 0, dN: 0, enabled: false };
 
 function Index() {
   const [mounted, setMounted] = useState(false);
