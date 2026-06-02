@@ -655,32 +655,17 @@ function Index() {
                   </div>
                 </div>
 
-                <div>
-                  <FieldLabel>Datum</FieldLabel>
-                  <div className="grid grid-cols-2 gap-1">
-                    {([
-                      { id: "ARC1960" as const, label: "Arc 1960" },
-                      { id: "WGS84" as const, label: "WGS 84" },
-                    ]).map((d) => (
-                      <button
-                        key={d.id}
-                        onClick={() => setDatum(d.id)}
-                        className={`rounded-md py-1.5 text-xs font-medium transition ${
-                          datum === d.id
-                            ? "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow shadow-cyan-500/30"
-                            : "bg-white/5 text-slate-300 hover:bg-white/10"
-                        }`}
-                      >
-                        {d.label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
-                    <strong className="text-slate-300">Arc 1960</strong> is the Kenyan cadastral datum. Points are auto-shifted to WGS 84 for the satellite basemap (~150 m correction).
-                  </p>
-                </div>
+                <p className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[10px] leading-relaxed text-slate-400">
+                  Datum: <strong className="text-slate-200">Arc 1960</strong> (Kenya cadastral). Auto-shifted to WGS 84 for the satellite basemap.
+                </p>
 
-                <LabeledInput label="Label (optional)" value={labelInput} onChange={setLabelInput} placeholder="Corner A" />
+                <LabeledInput
+                  label="Label (optional)"
+                  value={labelInput}
+                  onChange={setLabelInput}
+                  placeholder="e.g. Corner A, BM-1, North gate"
+                  inputMode="text"
+                />
 
                 <button
                   onClick={addCoordPoint}
@@ -738,57 +723,6 @@ function Index() {
                   )}
                 </>
               )}
-            </Section>
-
-            {/* Calibration */}
-            <Section
-              id="calibration"
-              icon={<Target className="h-3.5 w-3.5" />}
-              title="RTK calibration"
-              accent="from-amber-400 to-orange-500"
-              open={openSections.calibration}
-              onToggle={toggleSection}
-            >
-              <p className="mb-2.5 text-[11px] leading-relaxed text-slate-400">
-                Per-site offset (meters) applied to <strong className="text-slate-200">new points, GIS imports and OCR</strong>. Compare a known RTK fix to its plotted point, then enter the deltas.
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <LabeledInput
-                  label="ΔEast (m)"
-                  value={String(calibration.dE ?? 0)}
-                  onChange={(v) => setCalibration({ dE: Number(v) || 0 })}
-                  placeholder="0"
-                />
-                <LabeledInput
-                  label="ΔNorth (m)"
-                  value={String(calibration.dN ?? 0)}
-                  onChange={(v) => setCalibration({ dN: Number(v) || 0 })}
-                  placeholder="0"
-                />
-              </div>
-              <label className="mt-3 flex items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2">
-                <span className="text-xs text-slate-200">Apply calibration</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={calibration.enabled}
-                  onClick={() => setCalibration({ enabled: !calibration.enabled })}
-                  className={`relative h-5 w-9 rounded-full transition ${calibration.enabled ? "bg-gradient-to-r from-amber-400 to-orange-500 shadow shadow-amber-500/40" : "bg-white/10"}`}
-                >
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${calibration.enabled ? "left-[18px]" : "left-0.5"}`} />
-                </button>
-              </label>
-              <button
-                onClick={() => setCalibration({ dE: 0, dN: 0, enabled: false })}
-                className="mt-2 w-full rounded-md border border-white/10 bg-white/5 py-1.5 text-[11px] text-slate-300 transition hover:bg-white/10"
-              >
-                Reset offset
-              </button>
-              {calibration.enabled && (calibration.dE || calibration.dN) ? (
-                <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-300/90">
-                  Offset active: shifting by ΔE {calibration.dE} m, ΔN {calibration.dN} m.
-                </p>
-              ) : null}
             </Section>
 
             {/* Import */}
