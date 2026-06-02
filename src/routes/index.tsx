@@ -120,8 +120,6 @@ function Index() {
     [projects, activeId],
   );
 
-  const calibration = activeProject?.calibration ?? DEFAULT_CAL;
-
   const updateActive = (mut: (p: Project) => Project) => {
     setProjects((prev) => {
       const next = prev.map((p) =>
@@ -130,13 +128,6 @@ function Index() {
       saveProjects(next);
       return next;
     });
-  };
-
-  /** Apply current calibration (if enabled) to a WGS84 lat/lng. */
-  const calibrate = (lat: number, lng: number) => {
-    const c = activeProject?.calibration;
-    if (!c || !c.enabled || (!c.dE && !c.dN)) return { lat, lng };
-    return applyMetricOffset(lat, lng, c.dE, c.dN);
   };
 
   const switchProject = (id: string) => {
@@ -201,7 +192,6 @@ function Index() {
     search: false,
     layers: false,
     coords: true,
-    calibration: false,
     import: false,
     measure: false,
     info: false,
@@ -279,11 +269,10 @@ function Index() {
     );
   };
 
-  // --- UTM coordinate entry (Arc 1960 default, Southern hemisphere) ---
+  // --- UTM coordinate entry (Arc 1960, Southern hemisphere — Kenya) ---
   const [eastingInput, setEastingInput] = useState("");
   const [northingInput, setNorthingInput] = useState("");
   const [utmZone, setUtmZone] = useState("36");
-  const [datum, setDatum] = useState<Datum>("ARC1960");
   const [labelInput, setLabelInput] = useState("");
   const [coordError, setCoordError] = useState<string | null>(null);
   const [coordShape, setCoordShape] = useState<"none" | "line" | "polygon">("none");
@@ -301,38 +290,27 @@ function Index() {
       setCoordError("Easting out of range (expect ~160,000–840,000 m).");
       return;
     }
-    const r = utmToLatLng(e, n, z, "S", datum);
-    const adj = calibrate(r.lat, r.lng);
-    const autoLabel = `E${e.toFixed(0)} N${n.toFixed(0)} ·${z} ${datum === "ARC1960" ? "Arc60" : "WGS84"}`;
+    const r = utmToLatLng(e, n, z, "S", "ARC1960");
     const label =
       labelInput.trim() ||
-      `P${(activeProject?.points.length ?? 0) + 1} · ${autoLabel}`;
-    const pt: CoordPoint = { id: newPointId(), label, lat: adj.lat, lng: adj.lng };
+      `P${(activeProject?.points.length ?? 0) + 1}`;
+    const pt: CoordPoint = { id: newPointId(), label, lat: r.lat, lng: r.lng };
     updateActive((p) => ({ ...p, points: [...p.points, pt] }));
-    setFlyTo({ lat: adj.lat, lng: adj.lng, zoom: 18 });
+    setFlyTo({ lat: r.lat, lng: r.lng, zoom: 18 });
     setEastingInput("");
     setNorthingInput("");
     setLabelInput("");
   };
 
-  // --- GIS import (calibration applied) ---
+  // --- GIS import ---
   const handleGisFile = async (file: File) => {
     if (!activeProject) return;
     setImportBusy(true);
     setImportStatus(`Reading ${file.name}…`);
     try {
       const res = await importGisFile(file);
-      const adjPoints = res.points.map((p) => {
-        const a = calibrate(p.lat, p.lng);
-        return { ...p, lat: a.lat, lng: a.lng };
-      });
-      const adjMeasurements = res.measurements.map((m) => ({
-        ...m,
-        points: m.points.map(([lat, lng]) => {
-          const a = calibrate(lat, lng);
-          return [a.lat, a.lng] as [number, number];
-        }),
-      }));
+      const adjPoints = res.points;
+      const adjMeasurements = res.measurements;
       updateActive((p) => ({
         ...p,
         points: [...p.points, ...adjPoints],
@@ -348,8 +326,7 @@ function Index() {
       }
       setImportStatus(
         `Imported ${adjPoints.length} point(s), ${adjMeasurements.length} shape(s).` +
-          (res.warnings.length ? " " + res.warnings.join(" ") : "") +
-          (calibration.enabled ? " · Calibration applied." : ""),
+          (res.warnings.length ? " " + res.warnings.join(" ") : ""),
       );
     } catch (e) {
       setImportStatus("Import failed: " + (e as Error).message);
@@ -358,7 +335,7 @@ function Index() {
     }
   };
 
-  // --- OCR import (calibration applied) ---
+  // --- OCR import ---
   const handleOcrFile = async (file: File) => {
     if (!activeProject) return;
     setImportBusy(true);
@@ -368,7 +345,7 @@ function Index() {
       const { points: pts, raw } = extractCoordPointsFromText(text, {
         defaultZone: parseInt(utmZone, 10) || 36,
         defaultHemisphere: "S",
-        datum,
+        datum: "ARC1960",
       });
       if (pts.length === 0) {
         setImportStatus(
@@ -376,17 +353,14 @@ function Index() {
         );
         return;
       }
-      const adj = pts.map((p) => {
-        const a = calibrate(p.lat, p.lng);
-        return { ...p, lat: a.lat, lng: a.lng };
-      });
+      const adj = pts;
       updateActive((p) => ({ ...p, points: [...p.points, ...adj] }));
       setFitBounds(adj.map((p) => [p.lat, p.lng] as [number, number]));
       setTimeout(() => setFitBounds(null), 100);
       setImportStatus(
         `OCR detected ${adj.length} coordinate(s): ${raw.slice(0, 3).join(" · ")}${
           raw.length > 3 ? "…" : ""
-        }${calibration.enabled ? " · Calibration applied." : ""}`,
+        }`,
       );
     } catch (e) {
       setImportStatus("OCR failed: " + (e as Error).message);
@@ -481,14 +455,6 @@ function Index() {
     setMeasureMode(mode);
     setMeasurePoints([]);
     setOpenSections((s) => ({ ...s, measure: true }));
-  };
-
-  // --- Calibration handlers ---
-  const setCalibration = (patch: Partial<{ dE: number; dN: number; enabled: boolean }>) => {
-    updateActive((p) => ({
-      ...p,
-      calibration: { ...(p.calibration ?? DEFAULT_CAL), ...patch },
-    }));
   };
 
   return (
