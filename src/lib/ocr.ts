@@ -14,7 +14,13 @@ export type OcrOptions = {
 export async function runOcr(file: File): Promise<string> {
   const url = URL.createObjectURL(file);
   try {
-    const { data } = await Tesseract.recognize(url, "eng");
+    const { data } = await Tesseract.recognize(url, "eng", {
+      // Bias OCR towards digits + the few letters used as point labels.
+      // Helps a lot with handwritten survey sheets.
+      // @ts-expect-error tesseract.js typing
+      tessedit_char_whitelist:
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ=., \n",
+    });
     return data.text;
   } finally {
     URL.revokeObjectURL(url);
@@ -25,9 +31,32 @@ export async function runOcr(file: File): Promise<string> {
 const LATLNG_RE =
   /(-?\d{1,2}\.\d{3,8})\s*[,;\s]\s*(-?\d{1,3}\.\d{3,8})/g;
 
-// Match UTM-style 6 or 7 digit easting/northing pairs.
-// Easting 6 digits, Northing 7 digits (typical for KE).
-const UTM_RE = /(\d{6}(?:\.\d+)?)\s*[,;\sEe]?\s*(\d{7}(?:\.\d+)?)/g;
+// Generic UTM pair: 6 or 7 digit numbers, either order. We disambiguate
+// per-match by magnitude (northings in Kenya are ~9.7–9.9M, eastings 100k–900k,
+// sometimes written with a leading 0 on a survey sheet, e.g. "0813130").
+const UTM_RE =
+  /(\d{6,7}(?:\.\d+)?)\s*[,;\sEeNn:/-]{0,3}\s*(\d{6,7}(?:\.\d+)?)/g;
+
+// "label = Northing Easting" form, e.g. "a = 9876571 0813130".
+const LABELED_RE =
+  /([A-Za-z]{1,3}|\d{1,3})\s*[=:\-]\s*(\d{6,7}(?:\.\d+)?)\s*[,;\s]+\s*(\d{6,7}(?:\.\d+)?)/g;
+
+// Decide which number is easting vs northing. Returns null if neither plausible.
+function classifyUtmPair(
+  a: number,
+  b: number,
+): { easting: number; northing: number } | null {
+  const plausibleE = (v: number) => v >= 100_000 && v <= 999_999;
+  // KE northings (S hemisphere UTM) are ~9.5M–10M; N hemisphere ~0–10M.
+  const plausibleN = (v: number) => v >= 1_000_000 && v <= 10_000_000;
+
+  // Strip a single leading zero possibility by treating 7-digit values that
+  // start with 0 in source text as 6-digit eastings — but here we only see
+  // numeric values, so just rely on magnitude.
+  if (plausibleN(a) && plausibleE(b)) return { northing: a, easting: b };
+  if (plausibleN(b) && plausibleE(a)) return { northing: b, easting: a };
+  return null;
+}
 
 export function extractCoordPointsFromText(
   text: string,
@@ -58,20 +87,59 @@ export function extractCoordPointsFromText(
   }
 
   // Then UTM pairs
-  UTM_RE.lastIndex = 0;
-  while ((m = UTM_RE.exec(text)) !== null) {
-    const e = Number(m[1]);
-    const n = Number(m[2]);
-    const key = `UTM:${e.toFixed(0)}:${n.toFixed(0)}`;
+  // First try labelled rows ("a = 9876571 0813130") — captures the corner name.
+  LABELED_RE.lastIndex = 0;
+  while ((m = LABELED_RE.exec(text)) !== null) {
+    const label = m[1].trim();
+    const pair = classifyUtmPair(Number(m[2]), Number(m[3]));
+    if (!pair) continue;
+    const key = `UTM:${pair.easting.toFixed(0)}:${pair.northing.toFixed(0)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     try {
-      const ll = utmToLatLng(e, n, opts.defaultZone, opts.defaultHemisphere, opts.datum);
+      const ll = utmToLatLng(
+        pair.easting,
+        pair.northing,
+        opts.defaultZone,
+        opts.defaultHemisphere,
+        opts.datum,
+      );
       if (Math.abs(ll.lat) > 90 || Math.abs(ll.lng) > 180) continue;
-      raw.push(`E${e} N${n} (Z${opts.defaultZone}${opts.defaultHemisphere})`);
+      raw.push(`${label}: E${pair.easting} N${pair.northing}`);
       points.push({
         id: newPointId(),
-        label: `OCR E${e.toFixed(0)} N${n.toFixed(0)}`,
+        label,
+        lat: ll.lat,
+        lng: ll.lng,
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  // Then unlabelled UTM pairs anywhere else in the text.
+  UTM_RE.lastIndex = 0;
+  while ((m = UTM_RE.exec(text)) !== null) {
+    const pair = classifyUtmPair(Number(m[1]), Number(m[2]));
+    if (!pair) continue;
+    const key = `UTM:${pair.easting.toFixed(0)}:${pair.northing.toFixed(0)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      const ll = utmToLatLng(
+        pair.easting,
+        pair.northing,
+        opts.defaultZone,
+        opts.defaultHemisphere,
+        opts.datum,
+      );
+      if (Math.abs(ll.lat) > 90 || Math.abs(ll.lng) > 180) continue;
+      raw.push(
+        `E${pair.easting} N${pair.northing} (Z${opts.defaultZone}${opts.defaultHemisphere})`,
+      );
+      points.push({
+        id: newPointId(),
+        label: `P${points.length + 1}`,
         lat: ll.lat,
         lng: ll.lng,
       });
