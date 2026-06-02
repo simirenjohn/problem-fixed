@@ -27,7 +27,6 @@ import {
   FileUp,
   Image as ImageIcon,
   Loader2,
-  Target,
 } from "lucide-react";
 import parcelsData from "@/data/parcels.geojson?raw";
 import { Button } from "@/components/ui/button";
@@ -47,10 +46,8 @@ import {
   parcelToKML,
 } from "@/lib/parcel-export";
 import {
-  applyMetricOffset,
   parseDecimal,
   utmToLatLng,
-  type Datum,
 } from "@/lib/coords";
 import { importGisFile } from "@/lib/import-gis";
 import { extractCoordPointsFromText, runOcr } from "@/lib/ocr";
@@ -76,7 +73,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Plot UTM coordinates on satellite imagery with Arc 1960 datum and RTK calibration for Narok land surveys.",
+          "Plot Arc 1960 UTM coordinates on satellite imagery for Narok land surveys.",
       },
     ],
   }),
@@ -89,12 +86,9 @@ type SectionId =
   | "search"
   | "layers"
   | "coords"
-  | "calibration"
   | "import"
   | "measure"
   | "info";
-
-const DEFAULT_CAL = { dE: 0, dN: 0, enabled: false };
 
 function Index() {
   const [mounted, setMounted] = useState(false);
@@ -126,8 +120,6 @@ function Index() {
     [projects, activeId],
   );
 
-  const calibration = activeProject?.calibration ?? DEFAULT_CAL;
-
   const updateActive = (mut: (p: Project) => Project) => {
     setProjects((prev) => {
       const next = prev.map((p) =>
@@ -136,13 +128,6 @@ function Index() {
       saveProjects(next);
       return next;
     });
-  };
-
-  /** Apply current calibration (if enabled) to a WGS84 lat/lng. */
-  const calibrate = (lat: number, lng: number) => {
-    const c = activeProject?.calibration;
-    if (!c || !c.enabled || (!c.dE && !c.dN)) return { lat, lng };
-    return applyMetricOffset(lat, lng, c.dE, c.dN);
   };
 
   const switchProject = (id: string) => {
@@ -207,7 +192,6 @@ function Index() {
     search: false,
     layers: false,
     coords: true,
-    calibration: false,
     import: false,
     measure: false,
     info: false,
@@ -285,11 +269,10 @@ function Index() {
     );
   };
 
-  // --- UTM coordinate entry (Arc 1960 default, Southern hemisphere) ---
+  // --- UTM coordinate entry (Arc 1960, Southern hemisphere — Kenya) ---
   const [eastingInput, setEastingInput] = useState("");
   const [northingInput, setNorthingInput] = useState("");
   const [utmZone, setUtmZone] = useState("36");
-  const [datum, setDatum] = useState<Datum>("ARC1960");
   const [labelInput, setLabelInput] = useState("");
   const [coordError, setCoordError] = useState<string | null>(null);
   const [coordShape, setCoordShape] = useState<"none" | "line" | "polygon">("none");
@@ -307,38 +290,27 @@ function Index() {
       setCoordError("Easting out of range (expect ~160,000–840,000 m).");
       return;
     }
-    const r = utmToLatLng(e, n, z, "S", datum);
-    const adj = calibrate(r.lat, r.lng);
-    const autoLabel = `E${e.toFixed(0)} N${n.toFixed(0)} ·${z} ${datum === "ARC1960" ? "Arc60" : "WGS84"}`;
+    const r = utmToLatLng(e, n, z, "S", "ARC1960");
     const label =
       labelInput.trim() ||
-      `P${(activeProject?.points.length ?? 0) + 1} · ${autoLabel}`;
-    const pt: CoordPoint = { id: newPointId(), label, lat: adj.lat, lng: adj.lng };
+      `P${(activeProject?.points.length ?? 0) + 1}`;
+    const pt: CoordPoint = { id: newPointId(), label, lat: r.lat, lng: r.lng };
     updateActive((p) => ({ ...p, points: [...p.points, pt] }));
-    setFlyTo({ lat: adj.lat, lng: adj.lng, zoom: 18 });
+    setFlyTo({ lat: r.lat, lng: r.lng, zoom: 18 });
     setEastingInput("");
     setNorthingInput("");
     setLabelInput("");
   };
 
-  // --- GIS import (calibration applied) ---
+  // --- GIS import ---
   const handleGisFile = async (file: File) => {
     if (!activeProject) return;
     setImportBusy(true);
     setImportStatus(`Reading ${file.name}…`);
     try {
       const res = await importGisFile(file);
-      const adjPoints = res.points.map((p) => {
-        const a = calibrate(p.lat, p.lng);
-        return { ...p, lat: a.lat, lng: a.lng };
-      });
-      const adjMeasurements = res.measurements.map((m) => ({
-        ...m,
-        points: m.points.map(([lat, lng]) => {
-          const a = calibrate(lat, lng);
-          return [a.lat, a.lng] as [number, number];
-        }),
-      }));
+      const adjPoints = res.points;
+      const adjMeasurements = res.measurements;
       updateActive((p) => ({
         ...p,
         points: [...p.points, ...adjPoints],
@@ -354,8 +326,7 @@ function Index() {
       }
       setImportStatus(
         `Imported ${adjPoints.length} point(s), ${adjMeasurements.length} shape(s).` +
-          (res.warnings.length ? " " + res.warnings.join(" ") : "") +
-          (calibration.enabled ? " · Calibration applied." : ""),
+          (res.warnings.length ? " " + res.warnings.join(" ") : ""),
       );
     } catch (e) {
       setImportStatus("Import failed: " + (e as Error).message);
@@ -364,7 +335,7 @@ function Index() {
     }
   };
 
-  // --- OCR import (calibration applied) ---
+  // --- OCR import ---
   const handleOcrFile = async (file: File) => {
     if (!activeProject) return;
     setImportBusy(true);
@@ -374,7 +345,7 @@ function Index() {
       const { points: pts, raw } = extractCoordPointsFromText(text, {
         defaultZone: parseInt(utmZone, 10) || 36,
         defaultHemisphere: "S",
-        datum,
+        datum: "ARC1960",
       });
       if (pts.length === 0) {
         setImportStatus(
@@ -382,17 +353,14 @@ function Index() {
         );
         return;
       }
-      const adj = pts.map((p) => {
-        const a = calibrate(p.lat, p.lng);
-        return { ...p, lat: a.lat, lng: a.lng };
-      });
+      const adj = pts;
       updateActive((p) => ({ ...p, points: [...p.points, ...adj] }));
       setFitBounds(adj.map((p) => [p.lat, p.lng] as [number, number]));
       setTimeout(() => setFitBounds(null), 100);
       setImportStatus(
         `OCR detected ${adj.length} coordinate(s): ${raw.slice(0, 3).join(" · ")}${
           raw.length > 3 ? "…" : ""
-        }${calibration.enabled ? " · Calibration applied." : ""}`,
+        }`,
       );
     } catch (e) {
       setImportStatus("OCR failed: " + (e as Error).message);
@@ -487,14 +455,6 @@ function Index() {
     setMeasureMode(mode);
     setMeasurePoints([]);
     setOpenSections((s) => ({ ...s, measure: true }));
-  };
-
-  // --- Calibration handlers ---
-  const setCalibration = (patch: Partial<{ dE: number; dN: number; enabled: boolean }>) => {
-    updateActive((p) => ({
-      ...p,
-      calibration: { ...(p.calibration ?? DEFAULT_CAL), ...patch },
-    }));
   };
 
   return (
@@ -695,32 +655,17 @@ function Index() {
                   </div>
                 </div>
 
-                <div>
-                  <FieldLabel>Datum</FieldLabel>
-                  <div className="grid grid-cols-2 gap-1">
-                    {([
-                      { id: "ARC1960" as const, label: "Arc 1960" },
-                      { id: "WGS84" as const, label: "WGS 84" },
-                    ]).map((d) => (
-                      <button
-                        key={d.id}
-                        onClick={() => setDatum(d.id)}
-                        className={`rounded-md py-1.5 text-xs font-medium transition ${
-                          datum === d.id
-                            ? "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow shadow-cyan-500/30"
-                            : "bg-white/5 text-slate-300 hover:bg-white/10"
-                        }`}
-                      >
-                        {d.label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-[10px] leading-relaxed text-slate-500">
-                    <strong className="text-slate-300">Arc 1960</strong> is the Kenyan cadastral datum. Points are auto-shifted to WGS 84 for the satellite basemap (~150 m correction).
-                  </p>
-                </div>
+                <p className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[10px] leading-relaxed text-slate-400">
+                  Datum: <strong className="text-slate-200">Arc 1960</strong> (Kenya cadastral). Auto-shifted to WGS 84 for the satellite basemap.
+                </p>
 
-                <LabeledInput label="Label (optional)" value={labelInput} onChange={setLabelInput} placeholder="Corner A" />
+                <LabeledInput
+                  label="Label (optional)"
+                  value={labelInput}
+                  onChange={setLabelInput}
+                  placeholder="e.g. Corner A, BM-1, North gate"
+                  inputMode="text"
+                />
 
                 <button
                   onClick={addCoordPoint}
@@ -778,57 +723,6 @@ function Index() {
                   )}
                 </>
               )}
-            </Section>
-
-            {/* Calibration */}
-            <Section
-              id="calibration"
-              icon={<Target className="h-3.5 w-3.5" />}
-              title="RTK calibration"
-              accent="from-amber-400 to-orange-500"
-              open={openSections.calibration}
-              onToggle={toggleSection}
-            >
-              <p className="mb-2.5 text-[11px] leading-relaxed text-slate-400">
-                Per-site offset (meters) applied to <strong className="text-slate-200">new points, GIS imports and OCR</strong>. Compare a known RTK fix to its plotted point, then enter the deltas.
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <LabeledInput
-                  label="ΔEast (m)"
-                  value={String(calibration.dE ?? 0)}
-                  onChange={(v) => setCalibration({ dE: Number(v) || 0 })}
-                  placeholder="0"
-                />
-                <LabeledInput
-                  label="ΔNorth (m)"
-                  value={String(calibration.dN ?? 0)}
-                  onChange={(v) => setCalibration({ dN: Number(v) || 0 })}
-                  placeholder="0"
-                />
-              </div>
-              <label className="mt-3 flex items-center justify-between rounded-md border border-white/10 bg-white/5 px-3 py-2">
-                <span className="text-xs text-slate-200">Apply calibration</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={calibration.enabled}
-                  onClick={() => setCalibration({ enabled: !calibration.enabled })}
-                  className={`relative h-5 w-9 rounded-full transition ${calibration.enabled ? "bg-gradient-to-r from-amber-400 to-orange-500 shadow shadow-amber-500/40" : "bg-white/10"}`}
-                >
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${calibration.enabled ? "left-[18px]" : "left-0.5"}`} />
-                </button>
-              </label>
-              <button
-                onClick={() => setCalibration({ dE: 0, dN: 0, enabled: false })}
-                className="mt-2 w-full rounded-md border border-white/10 bg-white/5 py-1.5 text-[11px] text-slate-300 transition hover:bg-white/10"
-              >
-                Reset offset
-              </button>
-              {calibration.enabled && (calibration.dE || calibration.dN) ? (
-                <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-[10px] text-amber-300/90">
-                  Offset active: shifting by ΔE {calibration.dE} m, ΔN {calibration.dN} m.
-                </p>
-              ) : null}
             </Section>
 
             {/* Import */}
@@ -960,7 +854,6 @@ function Index() {
             {([
               { id: "projects" as const, icon: FolderOpen },
               { id: "coords" as const, icon: Navigation },
-              { id: "calibration" as const, icon: Target },
               { id: "import" as const, icon: FileUp },
               { id: "measure" as const, icon: Ruler },
               { id: "layers" as const, icon: Layers },
@@ -1010,12 +903,6 @@ function Index() {
             {measureMode === "distance" ? "Measure distance" : "Measure area"} — {measurePoints.length} point{measurePoints.length === 1 ? "" : "s"}
           </div>
         )}
-
-        {calibration.enabled && (calibration.dE || calibration.dN) ? (
-          <div className="pointer-events-none absolute right-3 top-3 z-[1000] rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-[11px] text-amber-100 shadow-lg backdrop-blur">
-            <Target className="mr-1 inline h-3 w-3" /> RTK cal: ΔE {calibration.dE}m · ΔN {calibration.dN}m
-          </div>
-        ) : null}
       </div>
     </div>
   );
@@ -1118,11 +1005,13 @@ function LabeledInput({
   value,
   onChange,
   placeholder,
+  inputMode = "decimal",
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  inputMode?: "text" | "decimal" | "numeric";
 }) {
   return (
     <div>
@@ -1131,7 +1020,7 @@ function LabeledInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        inputMode="decimal"
+        inputMode={inputMode}
         className="h-8 w-full rounded-md border border-white/10 bg-white/5 px-2 text-sm text-white placeholder:text-slate-500 focus:border-cyan-400/60 focus:outline-none"
       />
     </div>
