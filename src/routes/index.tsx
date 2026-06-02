@@ -1005,11 +1005,13 @@ function LabeledInput({
   value,
   onChange,
   placeholder,
+  inputMode = "decimal",
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  inputMode?: "text" | "decimal" | "numeric";
 }) {
   return (
     <div>
@@ -1018,7 +1020,7 @@ function LabeledInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        inputMode="decimal"
+        inputMode={inputMode}
         className="h-8 w-full rounded-md border border-white/10 bg-white/5 px-2 text-sm text-white placeholder:text-slate-500 focus:border-cyan-400/60 focus:outline-none"
       />
     </div>
