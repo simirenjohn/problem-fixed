@@ -854,7 +854,6 @@ function Index() {
             {([
               { id: "projects" as const, icon: FolderOpen },
               { id: "coords" as const, icon: Navigation },
-              { id: "calibration" as const, icon: Target },
               { id: "import" as const, icon: FileUp },
               { id: "measure" as const, icon: Ruler },
               { id: "layers" as const, icon: Layers },
@@ -904,12 +903,6 @@ function Index() {
             {measureMode === "distance" ? "Measure distance" : "Measure area"} — {measurePoints.length} point{measurePoints.length === 1 ? "" : "s"}
           </div>
         )}
-
-        {calibration.enabled && (calibration.dE || calibration.dN) ? (
-          <div className="pointer-events-none absolute right-3 top-3 z-[1000] rounded-full border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-[11px] text-amber-100 shadow-lg backdrop-blur">
-            <Target className="mr-1 inline h-3 w-3" /> RTK cal: ΔE {calibration.dE}m · ΔN {calibration.dN}m
-          </div>
-        ) : null}
       </div>
     </div>
   );
