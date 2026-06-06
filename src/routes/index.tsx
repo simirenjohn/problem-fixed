@@ -959,6 +959,7 @@ function Index() {
             {([
               { id: "projects" as const, icon: FolderOpen },
               { id: "coords" as const, icon: Navigation },
+              { id: "datum" as const, icon: Globe2 },
               { id: "import" as const, icon: FileUp },
               { id: "measure" as const, icon: Ruler },
               { id: "layers" as const, icon: Layers },
