@@ -1,6 +1,6 @@
 // Run Tesseract OCR on an image and extract coordinate candidates.
 import Tesseract from "tesseract.js";
-import { utmToLatLng, type Datum } from "@/lib/coords";
+import { utmToLatLng, type Datum, type SevenParam } from "@/lib/coords";
 import type { CoordPoint } from "@/lib/projects";
 import { newPointId } from "@/lib/projects";
 
@@ -9,6 +9,8 @@ export type OcrOptions = {
   defaultZone: number;
   defaultHemisphere: "N" | "S";
   datum: Datum;
+  /** Optional Arc1960 -> WGS84 Bursa-Wolf parameters. */
+  datumParams?: SevenParam;
 };
 
 export async function runOcr(file: File): Promise<string> {
@@ -103,6 +105,7 @@ export function extractCoordPointsFromText(
         opts.defaultZone,
         opts.defaultHemisphere,
         opts.datum,
+        opts.datumParams,
       );
       if (Math.abs(ll.lat) > 90 || Math.abs(ll.lng) > 180) continue;
       raw.push(`${label}: E${pair.easting} N${pair.northing}`);
@@ -132,6 +135,7 @@ export function extractCoordPointsFromText(
         opts.defaultZone,
         opts.defaultHemisphere,
         opts.datum,
+        opts.datumParams,
       );
       if (Math.abs(ll.lat) > 90 || Math.abs(ll.lng) > 180) continue;
       raw.push(
