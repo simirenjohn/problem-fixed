@@ -48,12 +48,16 @@ import {
 import {
   parseDecimal,
   utmToLatLng,
+  ARC1960_TO_WGS84_EPSG,
+  ARC1960_TO_WGS84_CONTROLLER,
+  type SevenParam,
 } from "@/lib/coords";
 import { importGisFile } from "@/lib/import-gis";
 import { extractCoordPointsFromText, runOcr } from "@/lib/ocr";
 import {
   type Project,
   type CoordPoint,
+  type DatumPreset,
   createProject,
   ensureDefaultProject,
   exportProject,
@@ -86,6 +90,7 @@ type SectionId =
   | "search"
   | "layers"
   | "coords"
+  | "datum"
   | "import"
   | "measure"
   | "info";
@@ -192,6 +197,7 @@ function Index() {
     search: false,
     layers: false,
     coords: true,
+    datum: false,
     import: false,
     measure: false,
     info: false,
@@ -277,6 +283,31 @@ function Index() {
   const [coordError, setCoordError] = useState<string | null>(null);
   const [coordShape, setCoordShape] = useState<"none" | "line" | "polygon">("none");
 
+  // Active Arc1960 -> WGS84 transform (per project, falls back to EPSG default).
+  const datumParams: SevenParam =
+    activeProject?.datumParams?.values ?? ARC1960_TO_WGS84_EPSG;
+  const datumPreset: DatumPreset = activeProject?.datumParams?.preset ?? "epsg";
+
+  const setDatumPreset = (preset: DatumPreset) => {
+    let values: SevenParam;
+    if (preset === "epsg") values = ARC1960_TO_WGS84_EPSG;
+    else if (preset === "controller") values = ARC1960_TO_WGS84_CONTROLLER;
+    else values = { ...datumParams };
+    updateActive((p) => ({ ...p, datumParams: { preset, values } }));
+  };
+
+  const setDatumValue = (key: keyof SevenParam, v: string) => {
+    const n = parseDecimal(v);
+    if (n === null) return;
+    updateActive((p) => ({
+      ...p,
+      datumParams: {
+        preset: "custom",
+        values: { ...(p.datumParams?.values ?? datumParams), [key]: n },
+      },
+    }));
+  };
+
   const addCoordPoint = () => {
     setCoordError(null);
     const e = parseDecimal(eastingInput);
@@ -290,7 +321,7 @@ function Index() {
       setCoordError("Easting out of range (expect ~160,000–840,000 m).");
       return;
     }
-    const r = utmToLatLng(e, n, z, "S", "ARC1960");
+    const r = utmToLatLng(e, n, z, "S", "ARC1960", datumParams);
     const label =
       labelInput.trim() ||
       `P${(activeProject?.points.length ?? 0) + 1}`;
@@ -346,6 +377,7 @@ function Index() {
         defaultZone: parseInt(utmZone, 10) || 36,
         defaultHemisphere: "S",
         datum: "ARC1960",
+        datumParams,
       });
       if (pts.length === 0) {
         setImportStatus(
