@@ -7,21 +7,48 @@ export function parseDecimal(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Apply a local metric offset (easting/northing meters) to a WGS84 lat/lng.
-// Useful for site-level RTK calibration of imported or OCR coordinates.
-export function applyMetricOffset(
-  lat: number,
-  lng: number,
-  dE: number,
-  dN: number,
-): { lat: number; lng: number } {
-  if (!dE && !dN) return { lat, lng };
-  const dLat = dN / 110540;
-  const dLng = dE / (111320 * Math.cos((lat * Math.PI) / 180));
-  return { lat: lat + dLat, lng: lng + dLng };
-}
-
 export type Datum = "WGS84" | "ARC1960";
+
+/** Bursa–Wolf 7-parameter datum shift (Arc 1960 -> WGS84 by convention). */
+export type SevenParam = {
+  /** translation, meters */
+  dx: number;
+  dy: number;
+  dz: number;
+  /** rotations, arc-seconds */
+  rx: number;
+  ry: number;
+  rz: number;
+  /** scale, parts-per-million */
+  k: number;
+};
+
+/** EPSG / Molodensky 3-parameter values for Arc 1960 -> WGS84 (Kenya). */
+export const ARC1960_TO_WGS84_EPSG: SevenParam = {
+  dx: -157,
+  dy: -2,
+  dz: -299,
+  rx: 0,
+  ry: 0,
+  rz: 0,
+  k: 0,
+};
+
+/**
+ * Some RTK controllers (e.g. the Kolida "Seven parameters" screen) input the
+ * transform in the WGS84 -> Arc 1960 direction with values +163, +6, +298.
+ * Stored here as the Arc 1960 -> WGS84 inverse so the math direction stays
+ * consistent with the EPSG preset.
+ */
+export const ARC1960_TO_WGS84_CONTROLLER: SevenParam = {
+  dx: -163,
+  dy: -6,
+  dz: -298,
+  rx: 0,
+  ry: 0,
+  rz: 0,
+  k: 1,
+};
 
 // Ellipsoid parameters
 const ELLIPSOIDS = {
@@ -29,10 +56,6 @@ const ELLIPSOIDS = {
   // Clarke 1880 (RGS) — used by Arc 1960 (Kenya/Tanzania/Uganda)
   ARC1960: { a: 6378249.145, f: 1 / 293.465 },
 };
-
-// 3-parameter geocentric translation from Arc 1960 -> WGS84 (Kenya).
-// Common EPSG transformation values (meters).
-const ARC1960_TO_WGS84 = { dx: -157, dy: -2, dz: -299 };
 
 function geodeticToEcef(lat: number, lng: number, h: number, a: number, f: number) {
   const e2 = f * (2 - f);
@@ -59,16 +82,38 @@ function ecefToGeodetic(x: number, y: number, z: number, a: number, f: number) {
   return { lat: (lat * 180) / Math.PI, lng: (lng * 180) / Math.PI };
 }
 
+/** Bursa–Wolf forward transform: Pt = T + (1+k*1e-6) * R * Ps */
+function applyBursaWolf(
+  x: number,
+  y: number,
+  z: number,
+  p: SevenParam,
+): { x: number; y: number; z: number } {
+  const asec = Math.PI / (180 * 3600);
+  const rx = p.rx * asec;
+  const ry = p.ry * asec;
+  const rz = p.rz * asec;
+  const s = 1 + p.k * 1e-6;
+  // Small-angle rotation matrix
+  const xr = x - rz * y + ry * z;
+  const yr = rz * x + y - rx * z;
+  const zr = -ry * x + rx * y + z;
+  return { x: s * xr + p.dx, y: s * yr + p.dy, z: s * zr + p.dz };
+}
+
 // Convert a lat/lng in the given datum to WGS84 lat/lng.
-export function toWgs84(lat: number, lng: number, datum: Datum): { lat: number; lng: number } {
+export function toWgs84(
+  lat: number,
+  lng: number,
+  datum: Datum,
+  params: SevenParam = ARC1960_TO_WGS84_EPSG,
+): { lat: number; lng: number } {
   if (datum === "WGS84") return { lat, lng };
   const src = ELLIPSOIDS.ARC1960;
   const dst = ELLIPSOIDS.WGS84;
   const p = geodeticToEcef(lat, lng, 0, src.a, src.f);
-  const tx = p.x + ARC1960_TO_WGS84.dx;
-  const ty = p.y + ARC1960_TO_WGS84.dy;
-  const tz = p.z + ARC1960_TO_WGS84.dz;
-  return ecefToGeodetic(tx, ty, tz, dst.a, dst.f);
+  const t = applyBursaWolf(p.x, p.y, p.z, params);
+  return ecefToGeodetic(t.x, t.y, t.z, dst.a, dst.f);
 }
 
 // WGS84 UTM -> lat/lng. zone 1-60, hemisphere 'N' or 'S'.
@@ -78,6 +123,7 @@ export function utmToLatLng(
   zone: number,
   hemisphere: "N" | "S",
   datum: Datum = "WGS84",
+  params: SevenParam = ARC1960_TO_WGS84_EPSG,
 ): { lat: number; lng: number } {
   const ell = ELLIPSOIDS[datum];
   const a = ell.a;
@@ -128,7 +174,9 @@ export function utmToLatLng(
 
   const result = { lat: lat * (180 / Math.PI), lng: lng * (180 / Math.PI) };
   // If non-WGS84 input, shift to WGS84 for display on web maps.
-  return datum === "WGS84" ? result : toWgs84(result.lat, result.lng, datum);
+  return datum === "WGS84"
+    ? result
+    : toWgs84(result.lat, result.lng, datum, params);
 }
 
 export function latLngToUtm(
