@@ -689,7 +689,8 @@ function Index() {
                 </div>
 
                 <p className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[10px] leading-relaxed text-slate-400">
-                  Datum: <strong className="text-slate-200">Arc 1960</strong> (Kenya cadastral). Auto-shifted to WGS 84 for the satellite basemap.
+                  Datum: <strong className="text-slate-200">Arc 1960 / Clarke 1880 / UTM {utmZone}S</strong> ·
+                  shift preset: <strong className="text-slate-200">{datumPreset === "epsg" ? "EPSG (−157,−2,−299)" : datumPreset === "controller" ? "Controller (+163,+6,+298)" : "Custom"}</strong>
                 </p>
 
                 <LabeledInput
