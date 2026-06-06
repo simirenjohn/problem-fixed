@@ -27,6 +27,7 @@ import {
   FileUp,
   Image as ImageIcon,
   Loader2,
+  Globe2,
 } from "lucide-react";
 import parcelsData from "@/data/parcels.geojson?raw";
 import { Button } from "@/components/ui/button";
@@ -48,12 +49,16 @@ import {
 import {
   parseDecimal,
   utmToLatLng,
+  ARC1960_TO_WGS84_EPSG,
+  ARC1960_TO_WGS84_CONTROLLER,
+  type SevenParam,
 } from "@/lib/coords";
 import { importGisFile } from "@/lib/import-gis";
 import { extractCoordPointsFromText, runOcr } from "@/lib/ocr";
 import {
   type Project,
   type CoordPoint,
+  type DatumPreset,
   createProject,
   ensureDefaultProject,
   exportProject,
@@ -86,6 +91,7 @@ type SectionId =
   | "search"
   | "layers"
   | "coords"
+  | "datum"
   | "import"
   | "measure"
   | "info";
@@ -192,6 +198,7 @@ function Index() {
     search: false,
     layers: false,
     coords: true,
+    datum: false,
     import: false,
     measure: false,
     info: false,
@@ -277,6 +284,31 @@ function Index() {
   const [coordError, setCoordError] = useState<string | null>(null);
   const [coordShape, setCoordShape] = useState<"none" | "line" | "polygon">("none");
 
+  // Active Arc1960 -> WGS84 transform (per project, falls back to EPSG default).
+  const datumParams: SevenParam =
+    activeProject?.datumParams?.values ?? ARC1960_TO_WGS84_EPSG;
+  const datumPreset: DatumPreset = activeProject?.datumParams?.preset ?? "epsg";
+
+  const setDatumPreset = (preset: DatumPreset) => {
+    let values: SevenParam;
+    if (preset === "epsg") values = ARC1960_TO_WGS84_EPSG;
+    else if (preset === "controller") values = ARC1960_TO_WGS84_CONTROLLER;
+    else values = { ...datumParams };
+    updateActive((p) => ({ ...p, datumParams: { preset, values } }));
+  };
+
+  const setDatumValue = (key: keyof SevenParam, v: string) => {
+    const n = parseDecimal(v);
+    if (n === null) return;
+    updateActive((p) => ({
+      ...p,
+      datumParams: {
+        preset: "custom",
+        values: { ...(p.datumParams?.values ?? datumParams), [key]: n },
+      },
+    }));
+  };
+
   const addCoordPoint = () => {
     setCoordError(null);
     const e = parseDecimal(eastingInput);
@@ -290,7 +322,7 @@ function Index() {
       setCoordError("Easting out of range (expect ~160,000–840,000 m).");
       return;
     }
-    const r = utmToLatLng(e, n, z, "S", "ARC1960");
+    const r = utmToLatLng(e, n, z, "S", "ARC1960", datumParams);
     const label =
       labelInput.trim() ||
       `P${(activeProject?.points.length ?? 0) + 1}`;
@@ -346,6 +378,7 @@ function Index() {
         defaultZone: parseInt(utmZone, 10) || 36,
         defaultHemisphere: "S",
         datum: "ARC1960",
+        datumParams,
       });
       if (pts.length === 0) {
         setImportStatus(
@@ -656,7 +689,8 @@ function Index() {
                 </div>
 
                 <p className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[10px] leading-relaxed text-slate-400">
-                  Datum: <strong className="text-slate-200">Arc 1960</strong> (Kenya cadastral). Auto-shifted to WGS 84 for the satellite basemap.
+                  Datum: <strong className="text-slate-200">Arc 1960 / Clarke 1880 / UTM {utmZone}S</strong> ·
+                  shift preset: <strong className="text-slate-200">{datumPreset === "epsg" ? "EPSG (−157,−2,−299)" : datumPreset === "controller" ? "Controller (+163,+6,+298)" : "Custom"}</strong>
                 </p>
 
                 <LabeledInput
@@ -725,6 +759,77 @@ function Index() {
               )}
             </Section>
 
+            {/* Datum & projection */}
+            <Section
+              id="datum"
+              icon={<Globe2 className="h-3.5 w-3.5" />}
+              title="Datum & projection"
+              accent="from-amber-400 to-orange-500"
+              open={openSections.datum}
+              onToggle={toggleSection}
+            >
+              <div className="space-y-2.5">
+                <div className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[10px] leading-relaxed text-slate-400">
+                  <div>Projection: <strong className="text-slate-200">UTM Zone {utmZone}S</strong></div>
+                  <div>Ellipsoid: <strong className="text-slate-200">Clarke 1880 (RGS)</strong></div>
+                  <div>Datum: <strong className="text-slate-200">Arc 1960 → WGS 84</strong></div>
+                </div>
+
+                <div>
+                  <FieldLabel>Shift preset (7-parameter)</FieldLabel>
+                  <div className="grid grid-cols-3 gap-1">
+                    {([
+                      { id: "epsg" as const, label: "EPSG" },
+                      { id: "controller" as const, label: "Controller" },
+                      { id: "custom" as const, label: "Custom" },
+                    ]).map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setDatumPreset(opt.id)}
+                        className={`rounded-md py-1.5 text-[11px] font-medium transition ${
+                          datumPreset === opt.id
+                            ? "bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow shadow-amber-500/30"
+                            : "bg-white/5 text-slate-300 hover:bg-white/10"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["dx", "dy", "dz"] as const).map((k) => (
+                    <LabeledInput
+                      key={k}
+                      label={`D${k[1].toUpperCase()} (m)`}
+                      value={String(datumParams[k])}
+                      onChange={(v) => setDatumValue(k, v)}
+                    />
+                  ))}
+                  {(["rx", "ry", "rz"] as const).map((k) => (
+                    <LabeledInput
+                      key={k}
+                      label={`R${k[1].toUpperCase()} (″)`}
+                      value={String(datumParams[k])}
+                      onChange={(v) => setDatumValue(k, v)}
+                    />
+                  ))}
+                  <LabeledInput
+                    label="K (ppm)"
+                    value={String(datumParams.k)}
+                    onChange={(v) => setDatumValue("k", v)}
+                  />
+                </div>
+
+                <p className="text-[10px] leading-relaxed text-slate-500">
+                  Values are applied as <strong>Arc 1960 → WGS 84</strong> (Bursa–Wolf). If your RTK controller's screen shows values as
+                  WGS 84 → Arc 1960 (e.g. <code>+163, +6, +298</code>), pick the "Controller" preset — the signs are already inverted for you.
+                  Reserved tokens: H.RMS, V.RMS, geoid model, grid correction (coming soon).
+                </p>
+              </div>
+            </Section>
+
             {/* Import */}
             <Section
               id="import"
@@ -752,7 +857,7 @@ function Index() {
                   <p className="rounded-md bg-white/5 px-2 py-1.5 text-[11px] leading-relaxed text-slate-300">{importStatus}</p>
                 )}
                 <p className="text-[10px] leading-relaxed text-slate-500">
-                  <strong>DWG</strong> cannot be parsed in the browser. Export from AutoCAD/QGIS as <em>DXF, SHP, KML or GeoJSON</em> first. Imports use the datum selected above and inherit RTK calibration.
+                  <strong>DWG</strong> cannot be parsed in the browser. Export from AutoCAD/QGIS as <em>DXF, SHP, KML or GeoJSON</em> first. OCR and typed UTM use the datum preset set in <em>Datum &amp; projection</em>.
                 </p>
               </div>
             </Section>
@@ -854,6 +959,7 @@ function Index() {
             {([
               { id: "projects" as const, icon: FolderOpen },
               { id: "coords" as const, icon: Navigation },
+              { id: "datum" as const, icon: Globe2 },
               { id: "import" as const, icon: FileUp },
               { id: "measure" as const, icon: Ruler },
               { id: "layers" as const, icon: Layers },

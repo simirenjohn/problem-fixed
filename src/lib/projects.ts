@@ -14,6 +14,15 @@ export type Measurement = {
   label?: string;
 };
 
+import type { SevenParam } from "@/lib/coords";
+
+export type DatumPreset = "epsg" | "controller" | "custom";
+
+export type DatumParams = {
+  preset: DatumPreset;
+  values: SevenParam;
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -22,8 +31,8 @@ export type Project = {
   points: CoordPoint[];
   measurements: Measurement[];
   notes?: string;
-  /** Site-level RTK calibration offset (meters). Applied to imports & OCR coords. */
-  calibration?: { dE: number; dN: number; enabled: boolean };
+  /** Arc 1960 -> WGS84 datum-shift parameters (Bursa-Wolf, 7-param). */
+  datumParams?: DatumParams;
 };
 
 const STORAGE_KEY = "siana-rim:projects:v1";
