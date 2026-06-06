@@ -759,6 +759,77 @@ function Index() {
               )}
             </Section>
 
+            {/* Datum & projection */}
+            <Section
+              id="datum"
+              icon={<Globe2 className="h-3.5 w-3.5" />}
+              title="Datum & projection"
+              accent="from-amber-400 to-orange-500"
+              open={openSections.datum}
+              onToggle={toggleSection}
+            >
+              <div className="space-y-2.5">
+                <div className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[10px] leading-relaxed text-slate-400">
+                  <div>Projection: <strong className="text-slate-200">UTM Zone {utmZone}S</strong></div>
+                  <div>Ellipsoid: <strong className="text-slate-200">Clarke 1880 (RGS)</strong></div>
+                  <div>Datum: <strong className="text-slate-200">Arc 1960 → WGS 84</strong></div>
+                </div>
+
+                <div>
+                  <FieldLabel>Shift preset (7-parameter)</FieldLabel>
+                  <div className="grid grid-cols-3 gap-1">
+                    {([
+                      { id: "epsg" as const, label: "EPSG" },
+                      { id: "controller" as const, label: "Controller" },
+                      { id: "custom" as const, label: "Custom" },
+                    ]).map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setDatumPreset(opt.id)}
+                        className={`rounded-md py-1.5 text-[11px] font-medium transition ${
+                          datumPreset === opt.id
+                            ? "bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow shadow-amber-500/30"
+                            : "bg-white/5 text-slate-300 hover:bg-white/10"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(["dx", "dy", "dz"] as const).map((k) => (
+                    <LabeledInput
+                      key={k}
+                      label={`D${k[1].toUpperCase()} (m)`}
+                      value={String(datumParams[k])}
+                      onChange={(v) => setDatumValue(k, v)}
+                    />
+                  ))}
+                  {(["rx", "ry", "rz"] as const).map((k) => (
+                    <LabeledInput
+                      key={k}
+                      label={`R${k[1].toUpperCase()} (″)`}
+                      value={String(datumParams[k])}
+                      onChange={(v) => setDatumValue(k, v)}
+                    />
+                  ))}
+                  <LabeledInput
+                    label="K (ppm)"
+                    value={String(datumParams.k)}
+                    onChange={(v) => setDatumValue("k", v)}
+                  />
+                </div>
+
+                <p className="text-[10px] leading-relaxed text-slate-500">
+                  Values are applied as <strong>Arc 1960 → WGS 84</strong> (Bursa–Wolf). If your RTK controller's screen shows values as
+                  WGS 84 → Arc 1960 (e.g. <code>+163, +6, +298</code>), pick the "Controller" preset — the signs are already inverted for you.
+                  Reserved tokens: H.RMS, V.RMS, geoid model, grid correction (coming soon).
+                </p>
+              </div>
+            </Section>
+
             {/* Import */}
             <Section
               id="import"
