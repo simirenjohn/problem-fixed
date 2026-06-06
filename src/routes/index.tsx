@@ -27,6 +27,7 @@ import {
   FileUp,
   Image as ImageIcon,
   Loader2,
+  Globe2,
 } from "lucide-react";
 import parcelsData from "@/data/parcels.geojson?raw";
 import { Button } from "@/components/ui/button";
