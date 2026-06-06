@@ -6,7 +6,6 @@
 // You can pass additional config via defineConfig({ vite: { ... } }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { fileURLToPath } from "node:url";
-import path from "node:path";
 
 const butUnzipBrowser = fileURLToPath(
   new URL(
