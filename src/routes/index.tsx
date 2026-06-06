@@ -857,7 +857,7 @@ function Index() {
                   <p className="rounded-md bg-white/5 px-2 py-1.5 text-[11px] leading-relaxed text-slate-300">{importStatus}</p>
                 )}
                 <p className="text-[10px] leading-relaxed text-slate-500">
-                  <strong>DWG</strong> cannot be parsed in the browser. Export from AutoCAD/QGIS as <em>DXF, SHP, KML or GeoJSON</em> first. Imports use the datum selected above and inherit RTK calibration.
+                  <strong>DWG</strong> cannot be parsed in the browser. Export from AutoCAD/QGIS as <em>DXF, SHP, KML or GeoJSON</em> first. OCR and typed UTM use the datum preset set in <em>Datum &amp; projection</em>.
                 </p>
               </div>
             </Section>
