@@ -12,4 +12,11 @@ export default defineConfig({
   tanstackStart: {
     server: { entry: "server" },
   },
+  vite: {
+    resolve: {
+      alias: {
+        "but-unzip": "but-unzip/index.browser.min.mjs",
+      },
+    },
+  },
 });
