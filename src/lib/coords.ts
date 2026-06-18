@@ -35,15 +35,13 @@ export const ARC1960_TO_WGS84_EPSG: SevenParam = {
 };
 
 /**
- * Some RTK controllers (e.g. the Kolida "Seven parameters" screen) input the
- * transform in the WGS84 -> Arc 1960 direction with values +163, +6, +298.
- * Stored here as the Arc 1960 -> WGS84 inverse so the math direction stays
- * consistent with the EPSG preset.
+ * Values from the RTK controller's "Seven parameters" screen, applied
+ * directly as Arc 1960 -> WGS84 (dx=+163, dy=+6, dz=+298, k=+1 ppm).
  */
 export const ARC1960_TO_WGS84_CONTROLLER: SevenParam = {
-  dx: -163,
-  dy: -6,
-  dz: -298,
+  dx: 163,
+  dy: 6,
+  dz: 298,
   rx: 0,
   ry: 0,
   rz: 0,
