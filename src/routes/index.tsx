@@ -823,8 +823,7 @@ function Index() {
                 </div>
 
                 <p className="text-[10px] leading-relaxed text-slate-500">
-                  Values are applied as <strong>Arc 1960 → WGS 84</strong> (Bursa–Wolf). If your RTK controller's screen shows values as
-                  WGS 84 → Arc 1960 (e.g. <code>+163, +6, +298</code>), pick the "Controller" preset — the signs are already inverted for you.
+                  Values are applied as <strong>Arc 1960 → WGS 84</strong> (Bursa–Wolf). The "Controller" preset uses the values straight from the RTK controller's Seven Parameters screen (<code>+163, +6, +298</code>, k = +1 ppm).
                   Reserved tokens: H.RMS, V.RMS, geoid model, grid correction (coming soon).
                 </p>
               </div>
